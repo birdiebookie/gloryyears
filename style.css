@@ -94,3 +94,19 @@ h2{font-size:1.4rem;margin:32px 0 12px}
   .top nav a{margin-left:12px}
 }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+
+/* forms */
+.form{display:grid;gap:16px;max-width:760px;margin-top:8px}
+.form label{display:grid;gap:6px;font-weight:600;font-size:1.05rem}
+.form input,.form select,.form textarea{font:inherit;font-weight:400;font-size:1.1rem;padding:12px 14px;border:2px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);width:100%}
+.form fieldset{border:2px solid var(--line);border-radius:10px;padding:14px 16px 16px;display:grid;gap:12px;margin:0;background:var(--card)}
+.form legend{font-family:Graduate,Georgia,serif;font-size:1.3rem;color:var(--maroon);padding:0 6px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hint{color:var(--muted);margin:-6px 0 0}
+.go{font:inherit;font-size:1.2rem;font-weight:700;padding:14px 22px;border:0;border-radius:8px;background:var(--maroon);color:#fff;cursor:pointer;justify-self:start}
+.go:disabled{opacity:.6}
+.msg{font-weight:700;font-size:1.1rem;margin:0;min-height:1.5em}
+.trap{position:absolute;left:-9999px;width:1px;height:1px}
+.help .form{margin-top:12px}
+.report{margin-top:28px;font-size:.95rem}.report a{color:var(--muted)}
+@media (max-width:640px){.pair{grid-template-columns:1fr}}

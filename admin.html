@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Glory Years Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Graduate&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+.card{border:2px solid var(--line);border-radius:10px;background:var(--card);padding:16px 18px;margin:0 0 14px}
+.card h3{margin:0 0 6px;font-size:1.2rem}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-top:10px}
+.row label{display:grid;gap:4px;font-weight:600;font-size:.95rem}
+.row input,.row select{font:inherit;font-size:1.05rem;padding:8px 10px;border:2px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
+.btn{font:inherit;font-size:1.05rem;font-weight:700;padding:10px 16px;border:2px solid var(--maroon);border-radius:8px;background:var(--maroon);color:#fff;cursor:pointer}
+.btn.alt{background:var(--card);color:var(--maroon)}
+.btn:disabled{opacity:.5}
+.small{color:var(--muted);font-size:.95rem}
+.counts{display:flex;gap:30px;flex-wrap:wrap;font-size:1.1rem}
+.counts b{font-family:Graduate,Georgia,serif;font-weight:400;font-size:1.8rem;display:block;color:var(--maroon)}
+#log{font-weight:700;font-size:1.1rem}
+iframe.pv{width:320px;max-width:100%;aspect-ratio:16/9;border:0;border-radius:6px;margin-top:8px}
+</style>
+</head>
+<body>
+<header class="top"><a href="/" class="brand">Glory Years</a><nav><a href="/">View site</a></nav></header>
+<main id="app">
+  <h1>Admin</h1>
+  <form id="login" class="form">
+    <label>Admin password<input id="pw" type="password" autocomplete="current-password"></label>
+    <button class="go">Sign in</button><p class="msg" id="lmsg"></p>
+  </form>
+  <div id="panel" hidden></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let PW=sessionStorage.getItem('gyadmin')||'', SCHOOLS={};
+const STATES='AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY ??'.split(' ');
+async function api(body){
+  const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json','x-admin-password':PW},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({error:'Server error '+r.status}));
+  if(!r.ok){const e=new Error(j.error||'Error');e.status=r.status;e.data=j;throw e;}
+  return j;}
+$('login').onsubmit=async e=>{e.preventDefault();PW=$('pw').value;try{await show();sessionStorage.setItem('gyadmin',PW);}catch(err){$('lmsg').textContent=err.message;}};
+if(PW) show().catch(()=>{});
+
+// A state + school pair of boxes. Type to search; a new school name is allowed.
+function picker(prefix,st,key){
+  return `<label>State<select data-st="${prefix}">${STATES.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}</select></label>
+  <label>School<input data-sc="${prefix}" list="dl-${prefix}" value="${esc(key||'')}" size="22"></label><datalist id="dl-${prefix}"></datalist>`;}
+function fillLists(root){
+  root.querySelectorAll('select[data-st]').forEach(sel=>{const p=sel.dataset.st;
+    const draw=()=>{root.querySelector('#dl-'+CSS.escape(p)).innerHTML=(SCHOOLS[sel.value]||[]).map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');};
+    sel.onchange=draw;draw();});}
+const val=(root,sel)=>root.querySelector(sel).value.trim();
+
+async function show(){
+  const o=await api({action:'overview'});
+  $('login').hidden=true;$('panel').hidden=false;
+  if(!Object.keys(SCHOOLS).length){try{SCHOOLS=(await fetch('/api/data').then(r=>r.json())).schools||{};}catch(e){}}
+  const games=o.subs.filter(s=>s.kind==='game'), ids=o.subs.filter(s=>s.kind==='identify');
+  $('panel').innerHTML=`
+  <p id="log" role="status"></p>
+  <div class="counts"><div><b>${o.counts.games.toLocaleString()}</b>games</div><div><b>${o.counts.videos.toLocaleString()}</b>videos</div><div><b>${o.counts.schools.toLocaleString()}</b>schools</div></div>
+
+  <h2>Import the archive</h2>
+  <div class="card"><p>Loads all schools and games from the data files into the database. Run it once. If it stops partway, press it again and it picks up where it left off.</p>
+  <p class="small">Schools done: ${o.importSchools.toLocaleString()} · Games done: ${o.importGames.toLocaleString()}</p>
+  <button class="btn" id="imp">Start import</button></div>
+
+  <h2>Shared games waiting (${games.length})</h2>
+  ${games.map(s=>{const p=s.payload;return `<div class="card" data-id="${s.id}">
+    <h3>${esc(p.school1)} (${esc(p.state1)}) vs ${esc(p.school2)} (${esc(p.state2)}) · ${esc(p.year)} ${esc(p.sport)}</h3>
+    <p class="small">From ${esc(p.name)} ${esc(p.email)} · ${p.links.length} video(s)${p.notes?' · Notes: '+esc(p.notes):''}</p>
+    <iframe class="pv" src="https://www.youtube-nocookie.com/embed/${esc(p.links[0])}" allowfullscreen></iframe>
+    <div class="row"><button class="btn" data-act="approve">Approve</button><button class="btn alt" data-act="reject">Reject</button></div></div>`;}).join('')||'<p class="small">Nothing waiting.</p>'}
+
+  <h2>“Know this school?” answers (${ids.length})</h2>
+  ${ids.map(s=>{const p=s.payload;return `<div class="card" data-id="${s.id}" data-game="${p.game_id}" data-team="${esc(p.team)}">
+    <h3>Game #${p.game_id}, team ${esc(p.team)}: “${esc(p.guess)}”</h3>
+    <p class="small"><a href="/#/game/${p.game_id}" target="_blank">Open the game</a> · From ${esc(p.name)} ${esc(p.email)}</p>
+    <div class="row">${picker('i'+s.id,'OH','')}<button class="btn" data-act="identify">Update game</button><button class="btn alt" data-act="reject">Reject</button></div></div>`;}).join('')||'<p class="small">Nothing waiting.</p>'}
+
+  <h2>New uploads to slot (${o.slots.length})</h2>
+  <div class="card"><p class="small">Last check: ${esc(o.lastRun)}</p>
+    <div class="row"><label>Channel IDs to check (separate with commas)<input id="ch" value="${esc(o.channels)}" size="50"></label>
+    <button class="btn alt" id="savech">Save channels</button><button class="btn" id="run">Check YouTube now</button></div></div>
+  ${o.slots.map(v=>{const g=v.guess||{};return `<div class="card" data-yt="${esc(v.yt)}">
+    <h3>${esc(v.title)}</h3>
+    <iframe class="pv" src="https://www.youtube-nocookie.com/embed/${esc(v.yt)}" allowfullscreen></iframe>
+    <div class="row">${picker('a'+v.yt,g.state||'OH',g.school1)}<label>Score<input data-f="score1" value="${esc(g.score1||'')}" size="3"></label></div>
+    <div class="row">${picker('b'+v.yt,g.state||'OH',g.school2)}<label>Score<input data-f="score2" value="${esc(g.score2||'')}" size="3"></label></div>
+    <div class="row"><label>Year<input data-f="year" value="${esc(g.year||'')}" size="5"></label>
+      <label>Sport<input data-f="sport" value="${esc(g.sport||'FB')}" size="4"></label>
+      <label>Tape<input data-f="tape" value="${esc(g.tape||'')}" size="7"></label>
+      <label>Part<input data-f="part" value="${esc(g.part||0)}" size="2"></label>
+      <button class="btn" data-act="slot">Add to archive</button><button class="btn alt" data-act="ignore">Skip</button></div></div>`;}).join('')||'<p class="small">Nothing to slot.</p>'}
+
+  <h2>Remove a game</h2>
+  <div class="card"><p class="small">For takedown requests. The game number is at the end of its web address (…/#/game/<b>123</b>).</p>
+    <div class="row"><label>Game number<input id="rmid" inputmode="numeric" size="8"></label><button class="btn" id="rm">Remove game</button></div></div>`;
+  fillLists($('panel'));
+  const log=t=>{$('log').textContent=t;};
+  $('panel').onclick=async e=>{
+    const b=e.target.closest('[data-act]');if(!b)return;const c=b.closest('.card');b.disabled=true;
+    try{
+      const act=b.dataset.act;
+      if(act==='approve') await api({action:'approve_game',id:+c.dataset.id});
+      if(act==='reject') await api({action:'reject',id:+c.dataset.id});
+      if(act==='identify'){const p='i'+c.dataset.id;
+        await api({action:'apply_identify',id:+c.dataset.id,game_id:+c.dataset.game,team:+c.dataset.team||1,
+          state:val(c,`[data-st="${p}"]`),school:val(c,`[data-sc="${p}"]`)});}
+      if(act==='slot'){const y=c.dataset.yt,f=n=>val(c,`[data-f="${n}"]`);
+        await api({action:'slot',yt:y,title:c.querySelector('h3').textContent,
+          state1:val(c,`[data-st="a${y}"]`),school1:val(c,`[data-sc="a${y}"]`),state2:val(c,`[data-st="b${y}"]`),school2:val(c,`[data-sc="b${y}"]`),
+          score1:f('score1'),score2:f('score2'),year:f('year'),sport:f('sport').toUpperCase(),tape:f('tape'),part:f('part')});}
+      if(act==='ignore') await api({action:'ignore',yt:c.dataset.yt});
+      c.remove();log('Done.');
+    }catch(err){log('Problem: '+err.message);b.disabled=false;}};
+  $('savech').onclick=async()=>{try{await api({action:'set_channels',value:$('ch').value});log('Channels saved.');}catch(err){log('Problem: '+err.message);}};
+  $('run').onclick=async()=>{log('Checking YouTube… this can take a minute.');try{const r=await api({action:'run_slotter'});
+    log(`Checked ${r.checked} videos. Added ${r.added}, ${r.queued} need slotting.`);setTimeout(show,1500);}catch(err){log('Problem: '+err.message);}};
+  $('rm').onclick=async()=>{const id=+$('rmid').value;if(!id)return;
+    if(!confirm('Remove game #'+id+' from the site? This cannot be undone.'))return;
+    try{await api({action:'remove_game',game_id:id});log('Game #'+id+' removed.');}catch(err){log('Problem: '+err.message);}};
+  $('imp').onclick=()=>runImport(log);
+}
+
+async function runImport(log){
+  $('imp').disabled=true;
+  try{
+    log('Loading data files…');
+    const [schools,games]=await Promise.all([fetch('/data/schools.json').then(r=>r.json()),fetch('/data/games.json').then(r=>r.json())]);
+    // Schools, about 2,000 at a time
+    const flat=[];for(const st in schools) for(const s of schools[st]) flat.push([st,s]);
+    let o=await api({action:'overview'}), i=o.importSchools;
+    while(i<flat.length){const part=flat.slice(i,i+2000),chunk={};for(const [st,s] of part)(chunk[st]??=[]).push(s);
+      const r=await api({action:'import_schools',offset:i,size:part.length,chunk});i=r.next;
+      log(`Schools: ${Math.min(i,flat.length).toLocaleString()} of ${flat.length.toLocaleString()}`);}
+    // Games, 400 at a time
+    i=o.importGames;
+    while(i<games.length){const part=games.slice(i,i+400);
+      const r=await api({action:'import_games',offset:i,size:part.length,chunk:part});i=r.next;
+      log(`Games: ${Math.min(i,games.length).toLocaleString()} of ${games.length.toLocaleString()}`);}
+    log('Import finished! All games and schools are loaded.');setTimeout(show,2000);
+  }catch(err){log('Import stopped: '+err.message+'. Press Start import again to continue.');$('imp').disabled=false;}
+}
+</script>
+</body>
+</html>

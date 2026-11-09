@@ -1,7 +1,7 @@
 // Glory Years – archive app
 const STATES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'District of Columbia',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
 const SPORTS={FB:'Football',BB:'Boys Basketball',GBB:'Girls Basketball','Girls Soccer':'Girls Soccer',Soccer:'Soccer',Baseball:'Baseball'};
-const HELP_EMAIL='';  // set to your email to turn on "Tell us" links
+const REMOVE_EMAIL='coachmark@gloryyears.com';
 let SCHOOLS={},GAMES=[],NAME={},BYSCHOOL={};
 const $app=document.getElementById('app');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -11,9 +11,15 @@ const schoolLink=(st,k)=>'#/school/'+encodeURIComponent(st)+'/'+encodeURICompone
 const nameOf=(st,k)=>NAME[sKey(st,k)]||k;
 const thumb=id=>'https://i.ytimg.com/vi/'+id+'/mqdefault.jpg';
 
+let IDX={};
 async function load(){
-  const [s,g]=await Promise.all([fetch('data/schools.json').then(r=>r.json()),fetch('data/games.json').then(r=>r.json())]);
-  SCHOOLS=s;GAMES=g;
+  let s,g;
+  try{const d=await fetch('/api/data').then(r=>{if(!r.ok)throw 0;return r.json();});
+    if(!d.games.length) throw 0;
+    s=d.schools;g=d.games.map(x=>{const r=x.slice(1);r.id=x[0];return r;});}
+  catch(e){[s,g]=await Promise.all([fetch('data/schools.json').then(r=>r.json()),fetch('data/games.json').then(r=>r.json())]);
+    g.forEach((r,i)=>r.id=i+1);}
+  SCHOOLS=s;GAMES=g;GAMES.forEach((r,i)=>IDX[r.id]=i);
   for(const st in SCHOOLS) for(const [k,n] of SCHOOLS[st]) NAME[sKey(st,k)]=n;
   GAMES.forEach((g,i)=>{const [st,k1,ost,k2]=g;
     (BYSCHOOL[sKey(st,k1)] ??= []).push(i);
@@ -85,7 +91,7 @@ function gameRow(i,st,k){
   const mine=(s1===st&&k1===k);const [ost,ok]=mine?[s2,k2]:[s1,k1];
   const sc=a&&b?(mine?`${a}–${b}`:`${b}–${a}`):'';
   const parts=vers[0].length;
-  return `<li><a href="#/game/${i}"><span class="yr">${yr||'—'}</span><img class="thumb" loading="lazy" alt="" src="${thumb(vers[0][0])}">
+  return `<li><a href="#/game/${g.id}"><span class="yr">${yr||'—'}</span><img class="thumb" loading="lazy" alt="" src="${thumb(vers[0][0])}">
   <span><span class="vs">vs ${esc(nameOf(ost,ok))}${ost!==st?', '+ost:''}</span><br><span class="meta">${sp?`<span class="tag">${esc(SPORTS[sp]||sp)}</span>`:''}${parts>1?parts+' parts':'1 video'}${vers.length>1?' · '+vers.length+' versions':''}</span></span>
   <span class="sc">${sc}</span></a></li>`;
 }
@@ -121,7 +127,18 @@ function gamePage(i){
   ${vers.length>1?`<p class="versions"><label>Version <select id="ver">${vers.map((v,j)=>`<option value="${j}">Version ${j+1} (${v.length} part${v.length>1?'s':''})</option>`).join('')}</select></label></p>`:''}
   <div class="parts" id="parts"></div>
   <div class="teams"><a href="${schoolLink(s1,k1)}">All ${esc(n1)} games</a><a href="${schoolLink(s2,k2)}">All ${esc(n2)} games</a></div>
-  ${(k1==='UNK'||k2==='UNK'||s1==='??')?`<div class="help"><h2>Know this ${s1==='??'?'game':'school'}?</h2><p>Part of this game hasn’t been identified. Watch a few minutes. If you spot the uniforms, the gym or the field, let us know.</p>${HELP_EMAIL?`<p><a href="mailto:${HELP_EMAIL}?subject=${encodeURIComponent('Glory Years game #'+i+' identified')}">Tell us who it is</a></p>`:''}</div>`:''}`;
+  ${(k1==='UNK'||k2==='UNK'||s1==='??')?`<div class="help"><h2>Know this ${s1==='??'?'game':'school'}?</h2><p>Part of this game hasn’t been identified. Watch a few minutes. If you spot the uniforms, the gym or the field, let us know.</p>
+    <form id="idf" class="form">
+      ${k1==='UNK'&&k2==='UNK'||s1==='??'?`<label>Which team do you know?<select name="team"><option value="1">The first team listed</option><option value="2">The second team listed</option></select></label>`:`<input type="hidden" name="team" value="${k1==='UNK'?1:2}">`}
+      <label>Who is it? Give the school and town if you can.<input name="guess" required maxlength="300"></label>
+      <label>Your name (optional)<input name="name" maxlength="80"></label>
+      <label>Your email, in case we have a question (optional)<input name="email" type="email" maxlength="120"></label>
+      <input name="website" class="trap" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button class="go">Send my answer</button><p class="msg" role="status"></p>
+    </form></div>`:''}
+  <p class="report"><a href="mailto:${REMOVE_EMAIL}?subject=${encodeURIComponent('Remove game #'+g.id)}">Request removal of this game</a></p>`;
+  document.getElementById('idf')?.addEventListener('submit',e=>{e.preventDefault();
+    const f=Object.fromEntries(new FormData(e.target));f.kind='identify';f.game_id=g.id;sendForm(e.target,f,'Thanks! We’ll check it and update the game.');});
   let v=0;
   const play=(p,auto)=>{document.getElementById('yt').src='https://www.youtube-nocookie.com/embed/'+vers[v][p]+'?rel=0&modestbranding=1'+(auto?'&autoplay=1':'');
     document.querySelectorAll('#parts button').forEach((x,j)=>x.setAttribute('aria-pressed',j===p));};
@@ -136,6 +153,43 @@ function mystery(){
   const ids=GAMES.map((g,i)=>i).filter(i=>GAMES[i][0]==='??'||GAMES[i][1]==='UNK'&&GAMES[i][3]==='UNK');
   $app.innerHTML=`<h1>Mystery Games</h1><p class="sub">${fmt(ids.length)} games we can’t place yet. No state, no schools, just football and basketball. Can you solve one?</p><ul class="games">${ids.map(i=>gameRow(i,'','')).join('')}</ul>`;
 }
+async function sendForm(form,data,done){
+  const msg=form.querySelector('.msg'),btn=form.querySelector('.go');btn.disabled=true;msg.textContent='Sending…';
+  try{const r=await fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const j=await r.json();if(!r.ok)throw new Error(j.error);form.reset();msg.textContent=done;}
+  catch(e){msg.textContent=e.message||'Could not send. Check your connection and try again.';}
+  btn.disabled=false;}
+function schoolPicker(n){
+  const opts=Object.keys(STATES).sort((a,b)=>STATES[a].localeCompare(STATES[b])).map(st=>`<option value="${st}">${esc(STATES[st])}</option>`).join('');
+  return `<fieldset><legend>Team ${n}</legend>
+  <label>State<select name="state${n}" data-n="${n}" required><option value="">Choose a state</option>${opts}</select></label>
+  <label>School<select name="school${n}" id="sch${n}" required><option value="">Choose a state first</option></select></label>
+  <label>Final score (optional)<input name="score${n}" inputmode="numeric" maxlength="3"></label></fieldset>`;}
+function sharePage(){
+  const yrs=[];for(let y=new Date().getFullYear();y>=1960;y--) yrs.push(y);
+  $app.innerHTML=`<h1>Share your game film</h1>
+  <p class="sub">Uploaded an old game to YouTube? Add it to the archive so classmates and teammates can find it. We check every game before it goes live.</p>
+  <form id="sf" class="form">
+    <div class="pair">${schoolPicker(1)}${schoolPicker(2)}</div>
+    <p class="hint">Can’t find a school? Choose “UNK – Unknown School” and tell us in the notes.</p>
+    <label>Sport<select name="sport" required><option value="FB">Football</option><option value="BB">Boys Basketball</option><option value="GBB">Girls Basketball</option></select></label>
+    <label>Year<select name="year" required><option value="">Choose a year</option>${yrs.map(y=>`<option>${y}</option>`).join('')}</select></label>
+    <label>YouTube link(s). If the game is in parts, paste each link on its own line, in order.<textarea name="links" rows="4" required></textarea></label>
+    <label>Your name<input name="name" maxlength="80" required></label>
+    <label>Your email<input name="email" type="email" maxlength="120" required></label>
+    <label>Notes (optional)<textarea name="notes" rows="3" maxlength="1000"></textarea></label>
+    <input name="website" class="trap" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <button class="go">Send my game</button><p class="msg" role="status"></p>
+  </form>`;
+  document.querySelectorAll('select[data-n]').forEach(sel=>sel.addEventListener('change',()=>{
+    const list=SCHOOLS[sel.value]||[];
+    document.getElementById('sch'+sel.dataset.n).innerHTML='<option value="">Choose a school</option>'+
+      (list.some(x=>x[0]==='UNK')?'':'<option value="UNK">UNK – Unknown School</option>')+
+      list.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');}));
+  document.getElementById('sf').addEventListener('submit',e=>{e.preventDefault();
+    const f=Object.fromEntries(new FormData(e.target));f.kind='game';
+    sendForm(e.target,f,'Thanks! Your game is in line for review. Once it’s approved it will show up on both schools’ pages.');});
+}
 function notFound(){$app.innerHTML=`<h1>Page not found</h1><p class="sub">That page isn’t in the archive. <a href="#/">Go to all states</a>.</p>`;}
 
 function route(){
@@ -144,7 +198,8 @@ function route(){
   if(!p[0]) home();
   else if(p[0]==='state') statePage(p[1]);
   else if(p[0]==='school') schoolPage(p[1],p[2]);
-  else if(p[0]==='game') gamePage(+p[1]);
+  else if(p[0]==='game') gamePage(IDX[+p[1]]);
+  else if(p[0]==='share') sharePage();
   else if(p[0]==='mystery') mystery();
   else notFound();
   const h=document.querySelector('h1'); if(h) document.title=h.textContent+' – Glory Years';
