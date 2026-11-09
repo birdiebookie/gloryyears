@@ -5,7 +5,6 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
   try {
     const b = await readBody(req);
-    if (b.website) return send(res, 200, { ok: true }); // hidden spam trap
     const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
     const since = new Date(Date.now() - 3600e3).toISOString();
     const recent = await db(`submissions?select=id&ip=eq.${encodeURIComponent(ip)}&created_at=gt.${since}`);
